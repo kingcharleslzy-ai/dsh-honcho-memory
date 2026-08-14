@@ -1,0 +1,6 @@
+# dsh-honcho-memory bundle patch: one insert over the empty profile root.
+# Override any field by patching the row by id from your profile's
+# cordis.patch.yml (the last write wins per row).
+- insert:
+    - id: honcho-memory
+      name: dsh-honcho-memory

@@ -1,0 +1,34 @@
+{
+  "name": "dsh-honcho-memory",
+  "version": "0.1.1",
+  "description": "DSH plugin: honcho long-term memory tools (memory_store / memory_search) over a self-hosted Honcho v3 backend",
+  "type": "module",
+  "exports": "./honcho-memory.js",
+  "main": "./honcho-memory.js",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "honcho-memory.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "honcho",
+    "memory"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingcharleslzy-ai/dsh-honcho-memory.git"
+  }
+}
