@@ -1,14 +1,13 @@
 // dsh-honcho-memory — DSH agent tool plugin: long-term memory over a
 // self-hosted Honcho v3 REST backend.
 //
-// Two tools, one per canonical Honcho operation (mirroring the official
-// honcho SDK 2.2.0 calls):
-//   memory_store  -> session.add_messages() -> POST /v3/workspaces/{ws}/sessions/{sid}/messages
-//   memory_search -> workspace search       -> POST /v3/workspaces/{ws}/search
+// Three capabilities:
+//   1. memory_store  -> session.add_messages() -> POST /v3/workspaces/{ws}/sessions/{sid}/messages
+//   2. memory_search -> workspace search       -> POST /v3/workspaces/{ws}/search
+//   3. 会话开始自动注入：每个新 agent 创建时异步检索最近记忆，经
+//      agent.ctx.systemPrompt.context 注册动态上下文，之后每次组装按需求值。
 //
-// The backend auto-creates the session on first write. No API key is sent:
-// point baseUrl at whatever address your Honcho instance listens on
-// (a local tunnel, a LAN host, or a public URL with a reverse proxy).
+// The backend auto-creates the session on first write. No API key is sent.
 //
 // Configure through the loader row:
 //   - id: honcho-memory
@@ -18,16 +17,20 @@
 //       workspace: hermes
 //       aiPeer: deepseek
 //       sessionId: dsh
+//       autoContext: true
+//       contextMaxChars: 1500
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'honcho-memory'
-export const inject = ['tools']
+export const inject = ['tools', 'systemPrompt']
 
 export const Config = z.object({
   baseUrl: z.string(),
   workspace: z.string(),
   aiPeer: z.string(),
   sessionId: z.string(),
+  autoContext: z.boolean(),
+  contextMaxChars: z.number(),
 })
 
 const DEFAULTS = {
@@ -35,7 +38,18 @@ const DEFAULTS = {
   workspace: 'hermes',
   aiPeer: 'deepseek',
   sessionId: 'dsh',
+  autoContext: true,
+  contextMaxChars: 1500,
 }
+
+// 会话开始自动检索的三组语义查询（各取 top5 后合并去重）
+const CONTEXT_QUERIES = [
+  'active task 进行中 未完成的任务',
+  '用户偏好 约定 习惯 规则',
+  '最近决定 教训 bug 坑',
+]
+const CONTEXT_MAX_ITEMS = 8
+const CONTEXT_FETCH_TIMEOUT_MS = 8000
 
 function resolveConfig(config) {
   return {
@@ -43,6 +57,8 @@ function resolveConfig(config) {
     workspace: config?.workspace || DEFAULTS.workspace,
     aiPeer: config?.aiPeer || DEFAULTS.aiPeer,
     sessionId: config?.sessionId || DEFAULTS.sessionId,
+    autoContext: config?.autoContext ?? DEFAULTS.autoContext,
+    contextMaxChars: config?.contextMaxChars || DEFAULTS.contextMaxChars,
   }
 }
 
@@ -63,6 +79,32 @@ async function call(cfg, method, path, body, signal) {
     throw new Error(`honcho ${method} ${path} failed (${res.status}): ${detail}`)
   }
   return data
+}
+
+async function searchMemory(cfg, query, limit, signal) {
+  const items = await call(cfg, 'POST', `/v3/workspaces/${cfg.workspace}/search`, { query, limit }, signal)
+  return Array.isArray(items) ? items : []
+}
+
+/** 把检索到的记忆渲染成注入文本；超长截断。 */
+function renderContext(items, maxChars) {
+  const seen = new Set()
+  const picked = []
+  for (const m of items) {
+    if (seen.has(m.id)) continue
+    seen.add(m.id)
+    picked.push(m)
+    if (picked.length >= CONTEXT_MAX_ITEMS) break
+  }
+  if (picked.length === 0) return ''
+  const lines = picked.map((m) => {
+    const when = String(m.created_at ?? '').slice(0, 10)
+    const author = m.peer_id === 'Charles' ? '你' : m.peer_id
+    return `- [${when} · ${author}] ${String(m.content).trim()}`
+  })
+  let text = '# 长期记忆（honcho）\n' + lines.join('\n') + '\n\n以上是本会话开始时自动检索的长期记忆；需要更多细节可用 memory_search 查询。'
+  if (text.length > maxChars) text = text.slice(0, maxChars - 2) + '…'
+  return text
 }
 
 export function apply(ctx, config) {
@@ -109,11 +151,43 @@ export function apply(ctx, config) {
     },
     execute: async (args, exec) => {
       const limit = Number.isInteger(args.limit) && args.limit > 0 ? Math.min(args.limit, 20) : 5
-      const items = await call(cfg, 'POST', `/v3/workspaces/${cfg.workspace}/search`, { query: args.query, limit }, exec?.signal)
-      if (!Array.isArray(items) || items.length === 0) return '没有找到相关记忆。'
+      const items = await searchMemory(cfg, args.query, limit, exec?.signal)
+      if (items.length === 0) return '没有找到相关记忆。'
       const lines = items.map((m, i) => `${i + 1}. [${m.peer_id} · ${String(m.created_at ?? '').slice(0, 16)}] ${m.content}`)
       return `找到 ${items.length} 条相关记忆：\n` + lines.join('\n')
     },
     timeoutMs: 30000,
+  })
+
+  if (!cfg.autoContext) return
+
+  // 会话开始自动注入：每个新 agent 注册一个按组装求值的动态上下文。
+  ctx.on('agent/created', ({ agent }) => {
+    const agentCtx = agent?.ctx
+    if (!agentCtx) return
+    let memoryText = ''
+    agentCtx.effect(() => {
+      const disposeContext = agentCtx.systemPrompt.context({
+        name: 'honcho-memory-context',
+        order: 200,
+        text: () => memoryText,
+      })
+      const controller = new AbortController()
+      const signal = controller.signal
+      const timeout = setTimeout(() => controller.abort(), CONTEXT_FETCH_TIMEOUT_MS)
+      void Promise.all(CONTEXT_QUERIES.map((q) =>
+        searchMemory(cfg, q, 5, signal).catch(() => [])
+      )).then((batches) => {
+        const merged = batches.flat()
+        memoryText = renderContext(merged, cfg.contextMaxChars)
+      }).catch(() => {
+        memoryText = ''
+      }).finally(() => clearTimeout(timeout))
+      return () => {
+        clearTimeout(timeout)
+        controller.abort()
+        disposeContext()
+      }
+    })
   })
 }
