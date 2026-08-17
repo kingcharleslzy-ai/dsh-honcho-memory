@@ -1,23 +1,32 @@
 # dsh-honcho-memory
 
-DSH（DeepSeek Harness）插件：把自建 Honcho v3 后端接成 DSH 的长期记忆。
+DeepSeek Harness（DSH）的 Honcho v3 长期记忆插件。普通对话会自动写入 Honcho；每一轮模型请求前，插件会按当前问题取回 session summary、用户画像、peer card 和相关 conclusions，并通过 DSH 的动态 runtime context 注入。
 
-三个能力：
+这版结构参考了 Honcho 的官方 SDK/API 设计与 Hermes 的第一方 Honcho provider：
 
-- **memory_store** — 写入一条记忆（对应官方 honcho SDK 的 `session.add_messages()`；琐碎内容会被拒绝）
-- **memory_search** — 语义搜索记忆（默认 session 级，可选 workspace 级）
-- **会话开始自动注入** — 每个新 agent 创建时异步检索最近记忆（活跃任务 / 用户偏好 / 最近决定与教训三组查询 + honcho 自动整理的 conclusions），经 `agent.ctx.systemPrompt.context` 注册为动态上下文，每次组装按需求值；后端不可达时静默降级为空
+- [Honcho 官方仓库与 v3 文档](https://github.com/plastic-labs/honcho)
+- [Honcho 官方 TypeScript SDK](https://github.com/plastic-labs/honcho/tree/main/sdks/typescript)
+- [Honcho 官方 MCP Server](https://github.com/plastic-labs/honcho/tree/main/mcp)
+- [Hermes 官方 Honcho provider](https://github.com/NousResearch/hermes-agent/tree/main/plugins/memory/honcho)
 
-无 API key、无第三方运行时：插件直接 fetch Honcho 的 REST API，会话在首次写入时自动创建。数据仍在你的 Honcho 实例上（本机隧道、内网或公网均可）。
+## 主要能力
 
-## v0.3.0：记忆噪音治理
+- **自动双向写入**：只保存真实用户消息和模型可见回答；插件上下文、工具结果、思考链不会误写。
+- **会话隔离**：默认每个 DSH 会话映射为独立的 `dsh-<session-id>` Honcho session。
+- **双 peer 观察**：默认 `Charles`（用户）与 `deepseek`（助手）；助手观察用户并形成专属 representation。
+- **首轮可用的自动召回**：在 DSH 的 `system-prompt/assemble` 阶段等待有上限的 Honcho 请求，避免异步结果赶不上当前轮。
+- **共享记忆冷启动**：若 `deepseek -> Charles` 画像尚未形成，会退回 Honcho 的 omniscient user representation，因此可利用同 workspace 中已有的用户知识。
+- **可诊断**：失败会写入 DSH 日志，`memory_status` 会显示队列、自动写入数、上下文加载数和最近错误。
 
-旧版本用 **workspace 级搜索**，会把 workspace 里其他助手（如 Hermes）各会话的**原始聊天记录**（"好的"、"继续"、"OK" 等琐碎应声、重复导入的 `<prior_memory_file>` 大块）一并搜进上下文，浪费 token 且干扰模型。0.3.0 的改进：
+## 工具
 
-1. **搜索默认限定本插件的 session**（`searchScope: session`），只搜自己维护的记忆链；需要跨会话时用 `scope=workspace` 显式指定。
-2. **合并 honcho 自动整理产物 conclusions**：honcho 后端的 dream 机制会把原始消息归纳成结论（观察者视角），注入时先展示结论（整理后）、再展示消息（事实记录），实现记忆分层。
-3. **垃圾过滤 + 内容去重**：琐碎应声、`<prior_memory_file>` 导入残留、纯符号、超长块一律过滤；按内容规范化去重（不只按 message id）。
-4. **写入防呆**：`memory_store` 拒绝琐碎内容与超长内容。
+| 工具 | 用途 |
+|---|---|
+| `memory_store` | 直接创建持久 conclusion；普通聊天无需手工重复保存 |
+| `memory_search` | 合并搜索 AI 视角 conclusions 与原始消息 |
+| `memory_context` | 获取 summary、representation、peer card、相关 conclusions |
+| `memory_reason` | 调用 Honcho dialectic 做跨会话综合推理 |
+| `memory_status` | 检查后端、当前 session 队列和插件运行状态 |
 
 ## 安装
 
@@ -25,30 +34,68 @@ DSH（DeepSeek Harness）插件：把自建 Honcho v3 后端接成 DSH 的长期
 dsh plugin --profile web add dsh-honcho-memory
 ```
 
-装完新会话即生效（运行中的服务重启一次后加载新包）。
+安装或升级后重启 DSH 服务，让运行中的 profile 加载新包。
 
-## 配置
-
-默认值：`baseUrl: http://127.0.0.1:8001`、`workspace: hermes`、`aiPeer: deepseek`、`sessionId: dsh`、`autoContext: true`、`contextMaxChars: 1500`、`searchScope: session`、`includeConclusions: true`、`maxConclusions: 6`。
-
-在你的 profile `cordis.patch.yml` 里按 id 覆盖整行 config：
+## 默认配置
 
 ```yaml
 - id: honcho-memory
   name: dsh-honcho-memory
   config:
-    baseUrl: http://192.168.1.10:8001
-    workspace: my-workspace
-    aiPeer: my-agent
-    sessionId: my-session
+    baseUrl: http://127.0.0.1:8001
+    apiKey: ''
+    workspace: hermes
+    userPeer: Charles
+    aiPeer: deepseek
+    sessionId: ''              # 空 = 每个 DSH 会话独立；非空 = 固定共享 session
+    sessionPrefix: dsh
+    autoCapture: true
+    captureSubagents: false
     autoContext: true
-    contextMaxChars: 2000
-    searchScope: session      # session（默认）| workspace
-    includeConclusions: true  # 注入时合并 honcho conclusions
-    maxConclusions: 6         # 合并的结论条数上限
+    contextMaxChars: 3000
+    contextTokens: 1400
+    contextFetchTimeoutMs: 6000
+    searchScope: workspace      # workspace | session
+    includeConclusions: true
+    maxConclusions: 10
+    dialecticReasoningLevel: low
+    messageMaxChars: 24000
 ```
 
-`aiPeer` 即记忆作者身份：多个 AI 共用同一 `aiPeer` 即共享同一记忆链（同链共享），各自使用不同 `aiPeer` 则同库分链。
+本机或关闭鉴权的自建 Honcho 不需要 `apiKey`。Honcho Cloud 或启用 Bearer 鉴权的实例可在 profile 配置中填写。
+
+## 0.3.x 升级说明
+
+0.3.x 把所有记忆写入固定 session `dsh`，而且只保存模型主动调用 `memory_store` 的内容。0.4.0 默认改为：
+
+1. 每个 DSH 会话独立；
+2. 用户和助手消息自动写入；
+3. `memory_store` 直接写 conclusion，不再伪装成助手聊天消息；
+4. 召回按 `deepseek -> Charles` 视角工作。
+
+旧 `dsh` session 不会被删除。若必须维持旧行为，可显式配置 `sessionId: dsh`；更推荐保留新默认，让旧数据作为历史留存。
+
+## 开发与验证
+
+```bash
+npm test
+npm run smoke
+```
+
+`npm run smoke` 默认连接 `http://127.0.0.1:8001` 的 `hermes` workspace，创建临时 session，验证消息、conclusion、语义检索、context、dialectic 和 queue API，然后删除测试数据。可用 `HONCHO_BASE_URL`、`HONCHO_API_KEY`、`HONCHO_WORKSPACE`、`HONCHO_USER_PEER`、`HONCHO_AI_PEER` 覆盖。
+
+## DeepSeek 后端注意事项
+
+DeepSeek V4 默认开启 thinking。对 Honcho deriver 这类结构化事实提取，长或重复批次可能把输出预算全部耗在 `reasoning_content`，导致最终 JSON 为空。自建 Honcho 使用 DeepSeek 时，建议：
+
+- `structured_output_mode = "json_object"`
+- 在 deriver 的 provider `extra_body` 中设置 `thinking.type = "disabled"`
+- 设置较短的 age flush，避免短会话长期停留在 pending
+
+相关上游资料：
+
+- [DeepSeek Thinking Mode 官方说明](https://api-docs.deepseek.com/guides/thinking_mode)
+- [Honcho #716：OpenAI-compatible reasoning models 产生零 observations](https://github.com/plastic-labs/honcho/issues/716)
 
 ## License
 
