@@ -1,6 +1,6 @@
 {
   "name": "dsh-honcho-memory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DSH plugin: honcho long-term memory tools (memory_store / memory_search) over a self-hosted Honcho v3 backend",
   "type": "module",
   "exports": "./honcho-memory.js",
