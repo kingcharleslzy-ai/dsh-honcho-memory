@@ -1,0 +1,30 @@
+name: publish
+on:
+  push:
+    tags: ['v*']
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run audit:public
+      - name: Verify bundled core dependency
+        run: npm pack --dry-run --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s)[0];if(!p.bundled?.includes("dsh-honcho-memory-core"))process.exit(1)})'
+      - run: npm publish --provenance
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --generate-notes \
+            --title "dsh-honcho-memory ${GITHUB_REF_NAME}"

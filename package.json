@@ -1,0 +1,54 @@
+{
+  "name": "dsh-honcho-memory",
+  "version": "0.5.2",
+  "description": "DSH plugin: official-model Honcho v3 memory plus a perspective-safe shared knowledge base",
+  "type": "module",
+  "exports": "./honcho-memory.js",
+  "main": "./honcho-memory.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:core": "node --test packages/core/test/*.test.js",
+    "audit:public": "node scripts/audit-public-package.mjs",
+    "check:codex": "node scripts/check-official-codex.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:dsh": "node scripts/smoke-dsh.mjs"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "dsh-honcho-memory-core": "0.2.0"
+  },
+  "bundledDependencies": [
+    "dsh-honcho-memory-core"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "honcho-memory.js",
+    "cordis.patch.yml",
+    "docs/architecture.md",
+    "docs/operations.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "honcho",
+    "memory"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingcharleslzy-ai/dsh-honcho-memory.git"
+  }
+}

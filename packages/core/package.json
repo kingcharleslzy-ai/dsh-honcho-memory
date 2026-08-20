@@ -1,0 +1,41 @@
+{
+  "name": "dsh-honcho-memory-core",
+  "version": "0.2.0",
+  "description": "Host-neutral Honcho v3 memory and shared-knowledge core for DSH and other agent integrations",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./config": "./src/config.js",
+    "./context": "./src/context.js",
+    "./knowledge": "./src/knowledge.js",
+    "./tidy": "./src/tidy.js"
+  },
+  "main": "./src/index.js",
+  "license": "MIT",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "honcho",
+    "memory",
+    "knowledge-base",
+    "agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingcharleslzy-ai/dsh-honcho-memory.git",
+    "directory": "packages/core"
+  }
+}

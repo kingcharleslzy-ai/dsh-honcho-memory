@@ -1,0 +1,28 @@
+name: publish-core
+on:
+  push:
+    tags: ['core-v*']
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run audit:public
+      - run: npm publish --workspace dsh-honcho-memory-core --provenance
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --generate-notes \
+            --title "honcho-memory-core ${GITHUB_REF_NAME}"
