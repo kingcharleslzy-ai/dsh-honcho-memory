@@ -159,6 +159,14 @@ test('plugin initializes peers, injects first-turn context, and auto-writes both
       'memory_status',
       'memory_store',
     ])
+    assert.deepEqual(tools.get('memory_status').parameters, {
+      type: 'object',
+      properties: {
+        check: { type: 'string', enum: ['health'], description: '固定传 health，执行完整健康检查' },
+      },
+      required: ['check'],
+      additionalProperties: false,
+    })
 
     rootHandlers.get('agent/created')({ agent })
     agentHandlers.get('agent/inbox/claimed')({

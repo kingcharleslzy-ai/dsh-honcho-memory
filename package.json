@@ -1,6 +1,6 @@
 {
   "name": "dsh-honcho-memory",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "DSH plugin: official-model Honcho v3 memory plus a perspective-safe shared knowledge base",
   "type": "module",
   "exports": "./honcho-memory.js",
@@ -15,14 +15,15 @@
     "audit:public": "node scripts/audit-public-package.mjs",
     "check:codex": "node scripts/check-official-codex.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:dsh": "node scripts/smoke-dsh.mjs"
+    "smoke:dsh": "node scripts/smoke-dsh.mjs",
+    "tidy:messages": "node scripts/tidy-messages.mjs"
   },
   "workspaces": [
     "packages/*"
   ],
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "dsh-honcho-memory-core": "0.2.0"
+    "dsh-honcho-memory-core": "0.2.1"
   },
   "bundledDependencies": [
     "dsh-honcho-memory-core"
@@ -35,6 +36,7 @@
   "files": [
     "honcho-memory.js",
     "cordis.patch.yml",
+    "scripts/tidy-messages.mjs",
     "docs/architecture.md",
     "docs/operations.md",
     "README.md",

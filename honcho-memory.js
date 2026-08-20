@@ -330,8 +330,15 @@ function registerTools(ctx, engine) {
 
   ctx.tools.register({
     name: 'memory_status',
-    description: '检查 Honcho API、当前会话后台队列、DSH 自动写入与共享知识状态。端口存在但 deriver/dialectic/dream 不工作时也应从这里继续深查。',
-    parameters: { type: 'object', properties: {} },
+    description: '检查 Honcho API、当前会话后台队列、DSH 自动写入与共享知识状态。调用时必须传 check=health，确保 DSH Code Mode 传递 JSON 参数对象。',
+    parameters: {
+      type: 'object',
+      properties: {
+        check: { type: 'string', enum: ['health'], description: '固定传 health，执行完整健康检查' },
+      },
+      required: ['check'],
+      additionalProperties: false,
+    },
     output: {
       schema: { type: 'string' },
       render: (_args, value) => [{ type: 'text', text: value }],

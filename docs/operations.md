@@ -15,14 +15,19 @@ Expected response:
 ```
 
 An HTTP health response only proves the API process is reachable. After DSH is
-configured, use `memory_status` and a small write/read test to verify the queue
+configured, use `memory_status({"check":"health"})` and a small write/read test to verify the queue
 and deriver:
 
-1. call `memory_status` and record the workspace and peer IDs;
+1. call `memory_status({"check":"health"})` and record the workspace and peer IDs;
 2. store a disposable, distinctive fact with `memory_store`;
 3. find it with `memory_search`;
 4. confirm queue pending/in-progress counts eventually return to zero;
 5. delete test data only if you have separately listed and backed up its exact ID.
+
+For legacy trivial messages, `npm run tidy:messages` is dry-run only: it writes a
+mode-`0600` JSON backup and prints every candidate's session and message ID. Deletion
+requires both `--apply` and `--confirm DELETE_TRIVIAL_MESSAGES`; review the generated
+backup before using either flag.
 
 If conclusions, summaries, or representations never appear, inspect the Honcho
 deriver and model-provider logs. A healthy API with a stopped deriver is not a
@@ -35,7 +40,7 @@ same service manager or terminal command used for the original installation.
 One common installation form is:
 
 ```bash
-dsh plugin --profile web add dsh-honcho-memory@0.5.2
+dsh plugin --profile web add dsh-honcho-memory@0.5.3
 ```
 
 Before relying on an upgrade, test the plugin tree in a disposable profile or

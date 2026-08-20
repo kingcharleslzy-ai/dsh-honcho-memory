@@ -79,7 +79,9 @@ export function formatSearchResults(groups, limit = 8, threshold = 0.84) {
   const buckets = (Array.isArray(groups) ? groups : []).map((group) => {
     const kind = group?.kind || 'memory'
     return dedupeBySimilarity(
-      (Array.isArray(group?.items) ? group.items : []).map((item) => ({ ...item, kind })),
+      (Array.isArray(group?.items) ? group.items : [])
+        .filter((item) => !isMemoryJunk(item?.content))
+        .map((item) => ({ ...item, kind })),
       threshold,
     )
   })

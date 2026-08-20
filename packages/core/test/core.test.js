@@ -3,15 +3,18 @@ import test from 'node:test'
 
 import {
   HonchoClient,
+  MESSAGE_TIDY_CONFIRMATION,
   TIDY_CONFIRMATION,
   chunkContent,
   contentSimilarity,
   createMemoryEngine,
   dedupeBySimilarity,
   executeConclusionTidy,
+  executeMessageTidy,
   formatSearchResults,
   isMemoryJunk,
   planConclusionTidy,
+  planMessageTidy,
   publishSharedKnowledge,
   resolveMemoryConfig,
   sessionIdFor,
@@ -39,6 +42,10 @@ test('configuration preserves dual peers and adds a canonical shared knowledge p
 test('capture helpers drop injected contexts and chunk large messages', () => {
   assert.equal(isMemoryJunk('<recommended_plugins>noise</recommended_plugins>'), true)
   assert.equal(isMemoryJunk('<memory-context>old memory</memory-context>'), true)
+  assert.equal(isMemoryJunk('继续……'), true)
+  assert.equal(isMemoryJunk('OK.'), true)
+  assert.equal(isMemoryJunk('好的！'), true)
+  assert.equal(isMemoryJunk('C++'), false)
   assert.equal(isMemoryJunk('The user prefers evidence-backed delivery.'), false)
 
   const input = `${'a'.repeat(700)}\n${'b'.repeat(700)}\n${'c'.repeat(700)}`
@@ -91,6 +98,20 @@ test('search result limits cannot starve shared knowledge behind local matches',
   assert.match(output, /\[message\/user\].*raw transcript evidence/)
 })
 
+test('search output filters legacy trivial messages after retrieval', () => {
+  const output = formatSearchResults([{
+    kind: 'message',
+    items: [
+      { content: 'OK.', peer_id: 'hermes' },
+      { content: '继续……', peer_id: 'user' },
+      { content: 'The deployment uses a private Honcho backend.', peer_id: 'user' },
+    ],
+  }], 8)
+  assert.doesNotMatch(output, /\bOK\./)
+  assert.doesNotMatch(output, /继续/)
+  assert.match(output, /private Honcho backend/)
+})
+
 test('client exposes official peer/session/conclusion/dream endpoints with v3 shapes', async () => {
   const calls = []
   const client = new HonchoClient(
@@ -114,6 +135,7 @@ test('client exposes official peer/session/conclusion/dream endpoints with v3 sh
   await client.peerContext('deepseek', 'user', { maxConclusions: 8 })
   await client.listConclusions('deepseek', 'user', { size: 20 })
   await client.scheduleDream('deepseek', 'user', { sessionId: 'session-1' })
+  await client.deleteMessage('session-1', 'message-1')
 
   assert.ok(calls.every((call) => call.url.startsWith('http://honcho.test/v3/')))
   assert.ok(calls.every((call) => call.headers.authorization === 'Bearer secret'))
@@ -125,6 +147,8 @@ test('client exposes official peer/session/conclusion/dream endpoints with v3 sh
   assert.ok(calls.some((call) => call.url.endsWith('/schedule_dream')
     && call.body.observer === 'deepseek'
     && call.body.observed === 'user'))
+  assert.ok(calls.some((call) => call.url.endsWith('/sessions/session-1/messages/message-1')
+    && call.method === 'DELETE'))
 })
 
 test('shared knowledge is canonical, perspective-safe, and skips near duplicates', async () => {
@@ -196,6 +220,32 @@ test('tidy never crosses perspective pairs and requires an explicit delete token
   const applied = await executeConclusionTidy(client, plan, { confirm: TIDY_CONFIRMATION })
   assert.equal(applied.applied, true)
   assert.deepEqual(deleted, [plan.clusters[0].redundant[0].id])
+})
+
+test('message tidy deletes only exact trivial-message IDs after explicit confirmation', async () => {
+  const plan = planMessageTidy([
+    { id: 'continue', session_id: 'session-a', content: '继续……', peer_id: 'user' },
+    { id: 'ok', session_id: 'session-b', content: 'OK.', peer_id: 'assistant' },
+    { id: 'keep', session_id: 'session-a', content: '继续修复 Honcho 插件。', peer_id: 'user' },
+  ])
+  assert.equal(plan.deleteCount, 2)
+  assert.deepEqual(plan.candidates.map((item) => item.id), ['continue', 'ok'])
+
+  const deleted = []
+  const client = {
+    async deleteMessage(sessionId, id) { deleted.push({ sessionId, id }) },
+  }
+  const dryRun = await executeMessageTidy(client, plan)
+  assert.equal(dryRun.applied, false)
+  assert.deepEqual(deleted, [])
+  const applied = await executeMessageTidy(client, plan, {
+    confirm: MESSAGE_TIDY_CONFIRMATION,
+  })
+  assert.equal(applied.applied, true)
+  assert.deepEqual(deleted, [
+    { sessionId: 'session-a', id: 'continue' },
+    { sessionId: 'session-b', id: 'ok' },
+  ])
 })
 
 test('memory engine injects local perspective, assistant knowledge, and shared knowledge', async () => {

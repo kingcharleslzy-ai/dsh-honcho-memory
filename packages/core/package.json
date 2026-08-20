@@ -1,6 +1,6 @@
 {
   "name": "dsh-honcho-memory-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Host-neutral Honcho v3 memory and shared-knowledge core for DSH and other agent integrations",
   "type": "module",
   "exports": {

@@ -101,7 +101,8 @@ dsh plugin --profile web add dsh-honcho-memory
     messageMaxChars: 24000
 ```
 
-重启 DSH 后，在对话中调用 `memory_status`。至少确认：
+重启 DSH 后，在对话中调用 `memory_status({"check":"health"})`。`check` 是必填字段，
+用于保证 DSH Code Mode 始终传递 JSON 参数对象。至少确认：
 
 - `Honcho API：可用`；
 - workspace、userPeer、aiPeer 与你的配置一致；
@@ -158,6 +159,7 @@ npm test
 npm run audit:public
 npm run smoke          # 需要可用的 Honcho；可用 HONCHO_* 环境变量覆盖配置
 npm run smoke:dsh      # 通过 DSH adapter 做临时写入/读取并清理
+npm run tidy:messages  # 只生成旧垃圾消息的备份与 dry-run 清单；不会自动删除
 ```
 
 更多资料：

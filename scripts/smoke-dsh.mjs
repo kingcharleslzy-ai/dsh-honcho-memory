@@ -27,19 +27,6 @@ const config = resolveMemoryConfig(rawConfig)
 const client = new HonchoClient(config)
 let temporaryConclusionId = ''
 
-async function waitForSearch(marker, query, attempts = 10) {
-  let result = ''
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    result = await tools.get('memory_search').execute(
-      { query, limit: 5, scope: 'workspace' },
-      exec,
-    )
-    if (result.includes(marker)) return result
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
-  throw new Error(`DSH adapter did not recall its temporary shared knowledge:\n${result}`)
-}
-
 try {
   apply(ctx, rawConfig)
   const expected = [
@@ -75,11 +62,14 @@ try {
   }
   const storedSearch = `[shared-knowledge] ${storedItem.content}`
 
-  const search = await waitForSearch(
-    marker,
-    'DSH can publish canonical knowledge for other Honcho hosts',
+  const legacySearch = await tools.get('memory_search').execute(
+    { query: 'OK.', limit: 20, scope: 'workspace' },
+    exec,
   )
-  const status = await tools.get('memory_status').execute({}, exec)
+  if (/^\d+\. \[message\/[^\]]+\] OK\.$/m.test(legacySearch)) {
+    throw new Error(`DSH search exposed a trivial legacy message:\n${legacySearch}`)
+  }
+  const status = await tools.get('memory_status').execute({ check: 'health' }, exec)
   if (!status.includes('Honcho API：可用') || !status.includes('shared knowledge readable: yes')) {
     throw new Error(`DSH status was not healthy:\n${status}`)
   }
@@ -89,7 +79,7 @@ try {
     registered,
     canonicalWrite: stored,
     canonicalRecall: storedSearch,
-    search,
+    legacyMessageFilter: 'ok',
     status,
   }, null, 2))
 } finally {

@@ -16,7 +16,13 @@ const INJECTED_PREFIXES = [
 export function isMemoryJunk(content) {
   const text = String(content ?? '').trim()
   if (!text || SYMBOL_ONLY_RE.test(text)) return true
-  if (text.length <= 12 && TRIVIAL_RE.test(text)) return true
+  // Treat surrounding punctuation as presentation, not meaning, so legacy
+  // replies such as "OK.", "好的！", and "继续……" do not become memory.
+  const trivialCandidate = text
+    .normalize('NFKC')
+    .replace(/^[\s\p{P}\p{S}]+|[\s\p{P}\p{S}]+$/gu, '')
+    .trim()
+  if (trivialCandidate.length <= 12 && TRIVIAL_RE.test(trivialCandidate)) return true
   return INJECTED_PREFIXES.some((prefix) => text.startsWith(prefix))
 }
 

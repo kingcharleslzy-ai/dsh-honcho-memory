@@ -1,6 +1,8 @@
 import { contentSimilarity } from './context.js'
+import { isMemoryJunk } from './capture.js'
 
 export const TIDY_CONFIRMATION = 'DELETE_DUPLICATE_CONCLUSIONS'
+export const MESSAGE_TIDY_CONFIRMATION = 'DELETE_TRIVIAL_MESSAGES'
 
 function keepScore(item) {
   const contentLength = String(item?.content || '').trim().length
@@ -53,6 +55,30 @@ export async function executeConclusionTidy(client, plan, options = {}, signal) 
       await client.deleteConclusion(item.id, signal)
       deleted.push(item.id)
     }
+  }
+  return { applied: true, deleted, backup: plan?.backup || [] }
+}
+
+export function planMessageTidy(items) {
+  const candidates = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.id && item?.session_id && isMemoryJunk(item.content))
+    .map((item) => ({ ...item }))
+  return {
+    dryRun: true,
+    deleteCount: candidates.length,
+    candidates,
+    backup: candidates,
+  }
+}
+
+export async function executeMessageTidy(client, plan, options = {}, signal) {
+  if (options.confirm !== MESSAGE_TIDY_CONFIRMATION) {
+    return { applied: false, reason: 'confirmation-required', plan }
+  }
+  const deleted = []
+  for (const item of plan?.candidates || []) {
+    await client.deleteMessage(item.session_id, item.id, signal)
+    deleted.push({ session_id: item.session_id, id: item.id })
   }
   return { applied: true, deleted, backup: plan?.backup || [] }
 }

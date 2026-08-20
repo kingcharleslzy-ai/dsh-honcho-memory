@@ -258,6 +258,14 @@ export class HonchoClient {
     )
   }
 
+  deleteMessage(sessionId, messageId, signal) {
+    return this.request(
+      'DELETE',
+      this.workspacePath(`/sessions/${pathId(sessionId)}/messages/${pathId(messageId)}`),
+      { signal },
+    )
+  }
+
   sessionContext(sessionId, query = '', options = {}, signal) {
     return this.request('GET', this.workspacePath(`/sessions/${pathId(sessionId)}/context`), {
       query: {
